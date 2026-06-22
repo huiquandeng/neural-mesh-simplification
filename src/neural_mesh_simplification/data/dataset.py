@@ -98,8 +98,12 @@ def mesh_to_tensor(mesh: trimesh.Trimesh) -> Data:
     # Build graph structure
     G = build_graph_from_mesh(mesh)
 
-    # Create edge index tensor
+    # Create edge index tensor. networkx yields each undirected edge once;
+    # the conv layers treat edge_index as directed (i -> j), so we add both
+    # directions to keep message passing symmetric.
     edge_index = torch.tensor(list(G.edges), dtype=torch.long).t().contiguous()
+    if edge_index.numel() > 0:
+        edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
 
     # Create Data object
     data = Data(

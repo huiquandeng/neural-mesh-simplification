@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch_cluster import knn
 
 
 class OverlappingTrianglesLoss(nn.Module):
@@ -103,9 +104,10 @@ class OverlappingTrianglesLoss(nn.Module):
                 device=sampled_points.device,
             )
 
-        # Use knn to find nearest triangles for each sampled point
-        distances = torch.cdist(sampled_points, centroids)
-        _, indices = distances.topk(k, dim=1, largest=False)
+        # Use knn (bounded memory) rather than a dense (N_points x N_faces)
+        # distance matrix, which blows up for large candidate sets.
+        col = knn(centroids, sampled_points, k=k)[1]  # nearest face per (point, j)
+        indices = col.view(sampled_points.shape[0], k)
 
         return indices
 

@@ -41,15 +41,18 @@ class EdgePredictor(nn.Module):
         else:
             extended_edges = knn_edges
 
-        # Step 2: Apply DevConv
+        # Step 2: Apply DevConv on the extended connectivity
         features = self.devconv(x, extended_edges)
 
-        # Step 3: Apply sparse self-attention
-        attention_scores = self.compute_attention_scores(features, edge_index)
+        # Step 3: Apply sparse self-attention over the *extended* edges.
+        # Computing attention/adjacency on the extended graph (not the sparse
+        # sampled subgraph) is what guarantees every sampled node keeps
+        # connectivity, avoiding isolated points and holes after simplification.
+        attention_scores = self.compute_attention_scores(features, extended_edges)
 
-        # Step 4: Compute simplified adjacency matrix
+        # Step 4: Compute simplified adjacency matrix on the extended graph
         simplified_adj_indices, simplified_adj_values = (
-            self.compute_simplified_adjacency(attention_scores, edge_index)
+            self.compute_simplified_adjacency(attention_scores, extended_edges)
         )
 
         return simplified_adj_indices, simplified_adj_values

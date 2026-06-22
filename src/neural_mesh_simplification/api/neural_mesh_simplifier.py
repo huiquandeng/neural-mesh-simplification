@@ -64,10 +64,22 @@ class NeuralMeshSimplifier:
 
         # Convert to a tensor
         tensor: Data = mesh_to_tensor(preprocessed_mesh)
-        model_output = self.model(tensor)
 
-        vertices = model_output["sampled_vertices"].detach().numpy()
-        faces = model_output["simplified_faces"].numpy()
-        edges = model_output["edge_index"].t().numpy()  # Transpose to get (n, 2) shape
+        self.model.eval()
+        with torch.no_grad():
+            model_output = self.model(tensor)
 
-        return trimesh.Trimesh(vertices=vertices, faces=faces, edges=edges)
+        vertices = model_output["sampled_vertices"].detach().cpu().numpy()
+        faces = model_output["simplified_faces"].detach().cpu().numpy()
+
+        # Build the mesh from the selected (manifold-filtered) faces only.
+        # Passing an explicit `edges=` array (as the old code did) confuses
+        # trimesh's topology and is unnecessary — edges are derived from faces.
+        simplified = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+
+        # Drop vertices that ended up unreferenced by any face so the output
+        # has no stray isolated points.
+        if len(faces) > 0:
+            simplified.remove_unreferenced_vertices()
+
+        return simplified

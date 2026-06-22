@@ -34,10 +34,19 @@ class CombinedMeshSimplificationLoss(nn.Module):
             original_data["pos"] if "pos" in original_data else original_data["x"]
         ).to(self.device)
         original_face = original_data["face"].to(self.device)
+        # Dataset stores faces transposed as [3, F]; loss code expects [F, 3].
+        if original_face.dim() == 2 and original_face.shape[0] == 3:
+            original_face = original_face.t().contiguous()
 
         sampled_vertices = simplified_data["sampled_vertices"].to(self.device)
         sampled_probs = simplified_data["sampled_probs"].to(self.device)
-        sampled_faces = simplified_data["simplified_faces"].to(self.device)
+        # Losses are computed over ALL candidate triangles, each weighted by its
+        # inclusion probability (the paper's differentiable relaxation). Using
+        # the thresholded `simplified_faces` here would (a) decouple the loss
+        # from the probabilities the network actually learns and (b) create the
+        # length mismatch between faces and probs that the old code patched
+        # with zero-padding.
+        candidate_faces = simplified_data["candidate_triangles"].to(self.device)
         face_probs = simplified_data["face_probs"].to(self.device)
 
         chamfer_loss = self.prob_chamfer_loss(
@@ -50,7 +59,7 @@ class CombinedMeshSimplificationLoss(nn.Module):
             original_x,
             original_face,
             sampled_vertices,
-            sampled_faces,
+            candidate_faces,
             face_probs,
         )
 
@@ -59,21 +68,21 @@ class CombinedMeshSimplificationLoss(nn.Module):
 
         collision_loss = self.collision_loss(
             sampled_vertices,
-            sampled_faces,
+            candidate_faces,
             face_probs,
         )
         edge_crossing_loss = self.edge_crossing_loss(
-            sampled_vertices, sampled_faces, face_probs
+            sampled_vertices, candidate_faces, face_probs
         )
 
         del face_probs
 
         overlapping_triangles_loss = self.overlapping_triangles_loss(
-            sampled_vertices, sampled_faces
+            sampled_vertices, candidate_faces
         )
 
         del sampled_vertices
-        del sampled_faces
+        del candidate_faces
 
         total_loss = (
             chamfer_loss

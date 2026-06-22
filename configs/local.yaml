@@ -10,8 +10,8 @@ model:
 
 # Training parameters
 training:
-  learning_rate: 1.0e-5
-  weight_decay: 0.99 # weight decay per epoch (as per paper)
+  learning_rate: 1.0e-3 # base LR; decayed by 0.99 each epoch (as per paper)
+  weight_decay: 0.0 # Adam L2 penalty (see default.yaml note)
   batch_size: 2
   accumulation_steps: 4
   num_epochs: 20 # total training epochs

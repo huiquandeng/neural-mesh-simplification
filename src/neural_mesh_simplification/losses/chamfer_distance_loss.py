@@ -58,8 +58,9 @@ class ProbabilisticChamferDistanceLoss(nn.Module):
         # Compute pairwise distances
         distances = torch.cdist(source, target)
 
-        # Find minimum distances
+        # Find minimum distances (squared, as in the paper's Chamfer term)
         min_distances, min_indices = distances.min(dim=1)
+        min_distances = min_distances ** 2
 
         if return_indices:
             return min_distances, min_indices

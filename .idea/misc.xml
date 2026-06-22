@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="/opt/homebrew/Caskroom/miniconda/base/envs/neural-mesh-simplification" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="/opt/homebrew/Caskroom/miniconda/base/envs/neural-mesh-simplification" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="$PROJECT_DIR$/../conda_msimplification" project-jdk-type="Python SDK" />
 </project>

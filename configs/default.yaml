@@ -10,8 +10,9 @@ model:
 
 # Training parameters
 training:
-  learning_rate: 1.0e-5
-  weight_decay: 0.99 # weight decay per epoch (as per paper)
+  learning_rate: 1.0e-3 # base LR; decayed by 0.99 each epoch (as per paper)
+  weight_decay: 0.0 # Adam L2 penalty. The paper's "0.99 decay per epoch" is an
+                    # LR schedule applied via ExponentialLR, NOT an Adam coeff.
   batch_size: 2
   num_epochs: 20 # total training epochs
   early_stopping_patience: 15 # epochs before early stopping

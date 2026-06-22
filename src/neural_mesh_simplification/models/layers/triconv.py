@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch_scatter import scatter_max, scatter_add
+from torch_scatter import scatter_add
 
 
 class TriConv(nn.Module):
@@ -33,19 +33,22 @@ class TriConv(nn.Module):
         return out
 
     def compute_relative_position_encoding(self, pos, row, col):
-        edge_vec = pos[row] - pos[col]
+        """Relative position encoding for an edge (i, j) between two triangle
+        barycenters.
 
-        t_max, _ = scatter_max(edge_vec.abs(), col, dim=0, dim_size=pos.size(0))
-        t_min, _ = scatter_max(-edge_vec.abs(), col, dim=0, dim_size=pos.size(0))
-        t_min = -t_min
+        `pos` holds the triangle barycenters [num_faces, 3]. For the paper's
+        TriConv we encode the relative geometry of neighboring triangles using
+        the barycenter difference together with per-axis max/min spread of the
+        edge vector, giving a 9-dim descriptor.
+        """
+        edge_vec = pos[row] - pos[col]  # [E, 3]
 
-        barycenter = pos.mean(dim=-1, keepdim=True) if pos.dim() == 3 else pos
-        barycenter_diff = barycenter[row] - barycenter[col]
+        # Per-edge max / min spread (relative to the two endpoints' geometry).
+        t_max = torch.maximum(pos[row], pos[col])
+        t_min = torch.minimum(pos[row], pos[col])
+        t_max_diff = t_max - pos[col]
+        t_min_diff = t_min - pos[col]
 
-        t_max_diff = t_max[row] - t_max[col]
-        t_min_diff = t_min[row] - t_min[col]
-        barycenter_diff = barycenter_diff.expand_as(t_max_diff)
-
-        rel_pos = torch.cat([t_max_diff, t_min_diff, barycenter_diff], dim=-1)
+        rel_pos = torch.cat([t_max_diff, t_min_diff, edge_vec], dim=-1)  # [E, 9]
 
         return rel_pos

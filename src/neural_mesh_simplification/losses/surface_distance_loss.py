@@ -109,17 +109,17 @@ class ProbabilisticSurfaceDistanceLoss(nn.Module):
             sampled_points, original_vertices
         )
 
-        # Normalize and scale distances
-        max_dist = distances.max() + self.epsilon
-        scaled_distances = (distances / max_dist) * 0.1
-
-        del distances  # Free memory
+        # Use squared distances directly (consistent with the forward term)
+        # instead of the previous max-normalize-and-scale heuristic, which made
+        # the reverse term's magnitude depend on the worst outlier rather than
+        # on actual surface deviation.
+        distances = distances ** 2
 
         # Reshape face probabilities to match the sampled points
         face_probs_expanded = face_probabilities.repeat_interleave(self.num_samples)
 
         # Compute weighted distances
-        reverse_term = (face_probs_expanded * scaled_distances).sum()
+        reverse_term = (face_probs_expanded * distances).sum()
 
         return reverse_term
 
@@ -155,15 +155,18 @@ class ProbabilisticSurfaceDistanceLoss(nn.Module):
     def compute_min_distances_to_original(
         self, sampled_points: torch.Tensor, target_vertices: torch.Tensor
     ) -> torch.Tensor:
-        """Efficient batch distance computation using KNN"""
-        # Convert to float32 for KNN
+        """Minimum distance from each sampled point to the nearest original
+        vertex, via a 1-NN lookup."""
         sp_float = sampled_points.float()
         tv_float = target_vertices.float()
 
-        # Compute KNN distances
-        distances, _ = knn(tv_float, sp_float, k=1)
+        # torch_cluster.knn returns (row, col) index pairs, NOT distances.
+        # row indexes into sp_float (the query set), col into tv_float.
+        row, col = knn(tv_float, sp_float, k=1)
+        nearest = tv_float[col]
+        distances = torch.norm(sp_float[row] - nearest, dim=1)
 
-        del sp_float, tv_float  # Free memory
+        del sp_float, tv_float
 
         return distances.view(-1).float()
 

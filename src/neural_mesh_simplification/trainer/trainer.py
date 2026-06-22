@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR
 from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
@@ -33,6 +33,7 @@ class Trainer:
         else:
             self.device = torch.device("cpu")
         logger.info(f"Using device: {self.device}")
+        print(f"Using device: {self.device}")
 
         logger.info("Initializing model...")
         self.model = NeuralMeshSimplification(
@@ -47,13 +48,20 @@ class Trainer:
         )
 
         logger.debug("Setting up optimizer and loss...")
+        # NOTE: the paper's "weight decay of 0.99 per epoch" refers to an
+        # exponential decay of the *learning rate*, NOT an Adam L2 penalty.
+        # Passing 0.99 as Adam's weight_decay applies a 0.99 L2 coefficient on
+        # every step, which crushes the weights and prevents the model from
+        # learning anything. We use a small/zero L2 here and apply the 0.99
+        # per-epoch decay through an ExponentialLR scheduler instead.
         self.optimizer = Adam(
             self.model.parameters(),
             lr=config["training"]["learning_rate"],
-            weight_decay=config["training"]["weight_decay"],
+            weight_decay=config["training"].get("weight_decay", 0.0),
         )
+        self.lr_decay_scheduler = ExponentialLR(self.optimizer, gamma=0.99)
         self.scheduler = ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.1, patience=10, verbose=True
+            self.optimizer, mode="min", factor=0.1, patience=10
         )
         self.criterion = CombinedMeshSimplificationLoss(
             lambda_c=config["loss"]["lambda_c"],
@@ -140,6 +148,8 @@ class Trainer:
                 )
 
                 self.scheduler.step(val_loss)
+                # Apply the paper's per-epoch learning-rate decay (gamma=0.99)
+                self.lr_decay_scheduler.step()
 
                 # Save the checkpoint
                 self._save_checkpoint(epoch, val_loss)
@@ -166,29 +176,53 @@ class Trainer:
 
         for batch_idx, batch in enumerate(self.train_loader):
             logger.debug(f"Processing batch {batch_idx + 1}")
+
+            batch = batch.to(self.device)
+
             self.optimizer.zero_grad()
-            output = self.model(batch)
-            loss = self.criterion(batch, output)
+
+            # The model + its internal kNN graphs operate on a single mesh.
+            # A PyG DataLoader concatenates several meshes into one disconnected
+            # graph, which would let kNN link vertices ACROSS meshes (data
+            # leakage and wrong geometry). Process each mesh separately and
+            # average the loss over the batch.
+            data_list = batch.to_data_list()
+            batch_loss = 0.0
+            valid = 0
+            for data in data_list:
+                output = self.model(data)
+                loss = self.criterion(data, output)
+                loss.backward()
+                batch_loss += loss.item()
+                valid += 1
+                del output
+
+            if valid > 0:
+                # Average gradients over the meshes in the batch
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        p.grad /= valid
+                self.optimizer.step()
+                running_loss += batch_loss / valid
 
             del batch
-            del output
-
-            loss.backward()
-            self.optimizer.step()
-            running_loss += loss.item()
 
         return running_loss / len(self.train_loader)
 
     def _validate(self) -> float:
         self.model.eval()
         val_loss = 0.0
+        num = 0
         with torch.no_grad():
             for batch in self.val_loader:
-                output = self.model(batch)
-                loss = self.criterion(batch, output)
-                val_loss += loss.item()
+                batch = batch.to(self.device)
+                for data in batch.to_data_list():
+                    output = self.model(data)
+                    loss = self.criterion(data, output)
+                    val_loss += loss.item()
+                    num += 1
 
-        return val_loss / len(self.val_loader)
+        return val_loss / max(num, 1)
 
     def _save_checkpoint(self, epoch: int, val_loss: float):
         checkpoint_path = os.path.join(

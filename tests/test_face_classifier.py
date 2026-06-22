@@ -21,8 +21,8 @@ def test_face_classifier_forward(face_classifier):
 
     out = face_classifier(x, pos)
     assert out.shape == (num_faces,)
+    # Per-face inclusion probabilities are independent sigmoids in (0, 1).
     assert torch.all(out >= 0) and torch.all(out <= 1)
-    assert torch.isclose(out.sum(), torch.tensor(1.0), atol=1e-6)
 
 
 def test_face_classifier_gradient(face_classifier):
@@ -51,11 +51,6 @@ def test_face_classifier_with_batch(face_classifier):
     out = face_classifier(x, pos, batch)
     assert out.shape == (num_faces,)
     assert torch.all(out >= 0) and torch.all(out <= 1)
-
-    # Check if the sum of probabilities for each batch is close to 1
-    for i in range(batch_size):
-        batch_sum = out[batch == i].sum()
-        assert torch.isclose(batch_sum, torch.tensor(1.0), atol=1e-6)
 
 
 def test_face_classifier_knn_graph(face_classifier):

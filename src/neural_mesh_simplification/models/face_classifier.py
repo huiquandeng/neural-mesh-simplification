@@ -19,7 +19,7 @@ class FaceClassifier(nn.Module):
 
         self.final_layer = nn.Linear(hidden_dim, 1)
 
-    def forward(self, x, pos, batch=None):
+    def forward(self, x, pos, batch=None, prior_probs=None):
         # Handle empty input
         if x.size(0) == 0 or pos.size(0) == 0:
             return torch.tensor([], device=x.device)
@@ -36,20 +36,20 @@ class FaceClassifier(nn.Module):
             x = self.triconv_layers[i](x, pos, edge_index)
             x = torch.relu(x)
 
-        # Final classification
-        x = self.final_layer(x)
-        logits = x.squeeze(-1)  # Remove last dimension
+        # Final classification -> per-face inclusion score
+        logits = self.final_layer(x).squeeze(-1)  # [num_faces]
 
-        # Apply softmax normalization per batch
-        if batch is None:
-            # Global normalization using softmax
-            probs = torch.softmax(logits, dim=0)
-        else:
-            # Per-batch normalization
-            probs = torch.zeros_like(logits)
-            for b in range(int(batch.max().item()) + 1):
-                mask = batch == b
-                probs[mask] = torch.softmax(logits[mask], dim=0)
+        # Per-face inclusion probability. Using a sigmoid (rather than a
+        # softmax over all faces) keeps each probability in (0, 1) so that a
+        # fixed threshold and the downstream manifold filtering are meaningful;
+        # a global softmax would drive every probability to ~1/N and make
+        # threshold-based face selection impossible (the root cause of the
+        # holes / isolated faces in the simplified output).
+        probs = torch.sigmoid(logits)
+
+        # Optionally fold in the prior triangle probability from the edge stage
+        if prior_probs is not None:
+            probs = probs * prior_probs
 
         return probs
 

@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="/opt/homebrew/Caskroom/miniconda/base/envs/neural-mesh-simplification" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="$MODULE_DIR$/../conda_msimplification" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
